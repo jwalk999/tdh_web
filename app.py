@@ -106,7 +106,9 @@ def apply_page_style(colors: theme.Theme) -> None:
         f"""<style>
 .stApp, [data-testid="stHeader"] {{ background: {colors.window}; color: {colors.text}; }}
 [data-testid="stSidebar"] {{ background: {colors.surface}; border-right: 1px solid {colors.border}; }}
-html, body, .stApp, .stApp p, .stApp label, .stApp span {{ font-family: {fonts}; }}
+html, body, .stApp, .stApp p, .stApp label {{ font-family: {fonts}; }}
+[data-testid="stIconMaterial"], .material-symbols-rounded, .material-icons {{
+    font-family: 'Material Symbols Rounded', 'Material Icons' !important; }}
 .stApp, .stApp p, .stApp label, .stApp li, .stApp h1, .stApp h2, .stApp h3, .stApp span {{ color: {colors.text}; }}
 .stApp [data-testid="stCaptionContainer"], .stApp small {{ color: {colors.muted}; }}
 .tdh-title {{ font-size: 40px; font-weight: 900; line-height: 1.1; margin: 8px 0 0 0; }}
