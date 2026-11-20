@@ -11,7 +11,10 @@ Scope: Streamlit version of Too Damn Hot!. Same pages as the desktop window (Now
     desktop app uses; only the drawing is different. Run it with: streamlit run app.py
 """
 
+import gc
+import io
 import re
+import threading
 from html import escape
 from pathlib import Path
 
@@ -57,6 +60,9 @@ st.set_page_config(
     page_icon=Image.open(HERE / "assets" / "hot-temperature.ico"),
     layout="wide",
 )
+
+
+_plot_lock = threading.Lock()
 
 
 # ===== HELPERS =====
@@ -216,8 +222,7 @@ def sidebar() -> tuple[dict, bool, int]:
 
         st.markdown("**Settings**")
         use_celsius = st.radio("Units", ["Fahrenheit", "Celsius"], horizontal=True) == "Celsius"
-        theme_name = st.selectbox("Theme", list(theme.THEMES), index=list(theme.THEMES).index(theme.DEFAULT_THEME))
-        theme.set_theme(theme_name)
+        st.selectbox("Theme", list(theme.THEMES), key="theme_select")
         heat_f = st.number_input("Heat alert at (feels-like °F)", min_value=80, max_value=130, value=105, step=1)
 
         if st.button("Refresh now"):
@@ -228,6 +233,28 @@ def sidebar() -> tuple[dict, bool, int]:
             "Updates once an hour."
         )
     return st.session_state["location"], use_celsius, int(heat_f)
+
+
+@st.cache_data(ttl=3600, max_entries=60, show_spinner=False)
+def chart_png(name, lat, lon, tz, mode, celsius, theme_name) -> bytes:
+    """Renders a chart once per place/mode/units/theme and shares the PNG with everyone."""
+    raw = cached_fetch(name, lat, lon, tz)
+    with _plot_lock:
+        theme.set_theme(theme_name)
+        if mode == "Hourly":
+            fig = make_hourly_graphs(raw["hourly_df"], celsius=celsius)
+        else:
+            fig = make_daily_graphs(raw["daily_df"].head(7), celsius=celsius)
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=110)
+        png = buf.getvalue()
+    del fig
+    gc.collect()
+    return png
+
+
+def active_theme() -> theme.Theme:
+    return theme.THEMES[st.session_state.get("theme_select", theme.DEFAULT_THEME)]
 
 
 # ===== PAGES =====
@@ -254,7 +281,7 @@ def alert_banner(view: dict, celsius: bool, heat_f: int) -> None:
 
 def page_now(view: dict, celsius: bool, heat_f: int) -> None:
     """The Now page: hero card, 7-day cards and the chart."""
-    cur, colors = view["current"], theme.current()
+    cur, colors = view["current"], active_theme()
     alert_banner(view, celsius, heat_f)
 
     unit = "°C" if celsius else "°F"
@@ -302,11 +329,10 @@ def page_now(view: dict, celsius: bool, heat_f: int) -> None:
 
     html("<div class='tdh-section'>Graph</div>")
     mode = st.radio("Graph", ["Daily", "Hourly"], horizontal=True, label_visibility="collapsed")
-    if mode == "Hourly":
-        figure = make_hourly_graphs(view["hourly_df"], celsius=celsius)
-    else:
-        figure = make_daily_graphs(view["daily_df"].head(7), celsius=celsius)
-    st.pyplot(figure, width="stretch")
+    loc = st.session_state["location"]
+    png = chart_png(loc["location_name"], loc["latitude"], loc["longitude"], loc["timezone"],
+                    mode, celsius, st.session_state["theme_select"])
+    st.image(png, width="stretch")
 
 
 def page_hourly(view: dict, celsius: bool) -> None:
@@ -364,7 +390,7 @@ def page_ten_day(view: dict, celsius: bool) -> None:
 
 def page_alerts(view: dict, celsius: bool, heat_f: int) -> None:
     """The Alerts page: NWS alert cards (or an all-clear), heat tips and the visitor's own threshold."""
-    cur, alerts, colors = view["current"], view["alerts"], theme.current()
+    cur, alerts, colors = view["current"], view["alerts"], active_theme()
     count = len(alerts)
     page_head(
         "Alerts",
@@ -402,14 +428,15 @@ def page_radar(view: dict) -> None:
     """The Radar page: the same Leaflet loop the desktop app shows, in an iframe."""
     cur = view["current"]
     page_head("Radar", "Radar loop, no API key needed. US: NEXRAD via Iowa Mesonet. Elsewhere: RainViewer.")
-    st.iframe(radar_html(cur["latitude"], cur["longitude"]), height=620)
+    st.iframe(radar_html(cur["latitude"], cur["longitude"], active_theme()), height=620)
+
 
 
 # ===== MAIN =====
 def main() -> None:
     """Draws the sidebar, loads the data for the chosen place and draws the chosen page."""
     location, celsius, heat_f = sidebar()
-    apply_page_style(theme.current())
+    apply_page_style(active_theme())
 
     page = st.radio("Page", PAGES, horizontal=True, label_visibility="collapsed")
 

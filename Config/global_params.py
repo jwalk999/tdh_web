@@ -10,9 +10,11 @@ Scope: Shared paths, location settings and Open-Meteo helpers for every weather 
     Anything that can go stale (dates, location) is read through a function, never stored at import time.
 """
 
+
 import json
 import sys
 from datetime import datetime
+from functools import lru_cache
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -99,7 +101,9 @@ def get_openmeteo_client() -> openmeteo_requests.Client:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         cache_session = requests_cache.CachedSession(str(DATA_DIR / ".cache"), expire_after=3600)
         retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
-        _openmeteo_client = openmeteo_requests.Client(session=retry_session)
+
+        # openmeteo-requests types this as niquests.Session, but a requests-based session works
+        _openmeteo_client = openmeteo_requests.Client(session=retry_session) # pyright: ignore[reportArgumentType]
     return _openmeteo_client
 
 
@@ -157,6 +161,7 @@ def get_hourly_params() -> dict:
 
 
 # ===== WEATHER CODE DESCRIPTIONS =====
+@lru_cache(maxsize=1)
 def load_descriptions() -> dict:
     """Loads WMO weather code descriptions, keyed by code as a string, each with "day" and "night" entries."""
     with DESCRIPTIONS_PATH.open(encoding="utf-8") as f:

@@ -10,7 +10,6 @@ Scope: The Leaflet radar page from widgets.py as a plain HTML string, so Streaml
     No Qt needed. Placeholders are swapped with str.replace.
 """
 
-import theme
 
 RADAR_HTML = """<!doctype html>
 <html><head><meta charset="utf-8">
@@ -68,17 +67,17 @@ if (inUS) {
 </script></body></html>"""
 
 
-def radar_html(latitude: float, longitude: float) -> str:
+def radar_html(latitude: float, longitude: float, colors) -> str:
     """Builds the radar page for a location, using the current theme's colors.
 
     Args:
         latitude: Decimal degrees.
         longitude: Decimal degrees.
+        colors: A theme.Theme-like object with window, text and accent colors.
 
     Returns:
         A complete HTML document.
     """
-    colors = theme.current()
     is_light = colors.name == "Daylight"
     return (
         RADAR_HTML.replace("%LAT%", f"{latitude:.4f}")
